@@ -9,12 +9,13 @@ import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum LoginField { case username, password, oneTimePassword }
+
 struct LauncherView: View {
     @ObservedObject var model: LauncherModel
     @Environment(\.openWindow) private var openWindow
     @State private var confirmAutoLogin = false
-    @FocusState private var focusedField: Field?
-    private enum Field { case username, password }
+    @FocusState private var focusedField: LoginField?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -98,9 +99,6 @@ struct LauncherView: View {
             Button("BUTTON_OK", role: .cancel) {}
         } message: {
             Text("AUTOLOGIN_INFORMATIVE")
-        }
-        .onAppear {
-            focusedField = model.username.isEmpty ? .username : .password
         }
     }
 
@@ -203,6 +201,7 @@ struct LauncherView: View {
                             ForEach(model.accounts, id: \.username) { account in
                                 Button(account.username) {
                                     model.selectAccount(account)
+                                    focusFirstEmptyField()
                                 }
                             }
                         } label: {
@@ -243,7 +242,8 @@ struct LauncherView: View {
                     Spacer()
                     Text("Optional").foregroundStyle(.tertiary)
                 }.font(.caption).foregroundStyle(.secondary)
-                OneTimeCodeField(text: $model.oneTimePassword)
+                OneTimeCodeField(
+                    text: $model.oneTimePassword, focusedField: $focusedField)
                     .onSubmit { model.login() }
             }
             HStack {
@@ -275,6 +275,21 @@ struct LauncherView: View {
             .xomPrimaryButton().controlSize(.large)
             .keyboardShortcut(.defaultAction).disabled(!model.canLogin)
             .padding(.top, 2)
+        }
+        .onAppear(perform: focusFirstEmptyField)
+    }
+
+    private func focusFirstEmptyField() {
+        if model.username.trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
+        {
+            focusedField = .username
+        } else if model.password.isEmpty {
+            focusedField = .password
+        } else if model.oneTimePassword.isEmpty {
+            focusedField = .oneTimePassword
+        } else {
+            focusedField = nil
         }
     }
 
@@ -376,7 +391,9 @@ struct LauncherView: View {
     }
 
     #Preview("One-time password") {
-        OneTimeCodeField(text: .constant("123456")).padding().frame(width: 304)
+        @Previewable @FocusState var focusedField: LoginField?
+        OneTimeCodeField(text: .constant("123456"), focusedField: $focusedField)
+            .padding().frame(width: 304)
     }
 
     #Preview("Auto-OTP setup") {
@@ -386,8 +403,12 @@ struct LauncherView: View {
 
 private struct OneTimeCodeField: View {
     @Binding var text: String
+    var focusedField: FocusState<LoginField?>.Binding
     @State private var input = ""
-    @FocusState private var isFocused: Bool
+
+    private var isFocused: Bool {
+        focusedField.wrappedValue == .oneTimePassword
+    }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -403,7 +424,7 @@ private struct OneTimeCodeField: View {
                     )
                     .multilineTextAlignment(.center)
                     .tint(XOMStyle.accent)
-                    .focused($isFocused)
+                    .focused(focusedField, equals: .oneTimePassword)
                     .accessibilityLabel("One-Time Password")
                     .accessibilityHint("Optional six-digit code")
                 Text("\(input.count)/6")
