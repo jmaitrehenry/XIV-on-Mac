@@ -81,12 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Frontier.frontierURLTemplate, Settings.dalamudBetaKind,
             Settings.dalamudBetaKey)
         Wine.setup()
-        if #available(macOS 14.0, *) {
-            DistributedNotificationCenter.default().addObserver(
-                self, selector: #selector(wineAppWillActivate(_:)),
-                name: Notification.Name("WineAppWillActivateNotification"),
-                object: nil, suspensionBehavior: .deliverImmediately)
-        }
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(wineAppWillActivate(_:)),
+            name: Notification.Name("WineAppWillActivateNotification"),
+            object: nil, suspensionBehavior: .deliverImmediately)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -115,10 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let pid = notification.userInfo?["ActivatingAppPID"] as? Int32,
             let app = NSRunningApplication(processIdentifier: pid)
         else { return }
-        if #available(macOS 14.0, *) {
-            NSApp.yieldActivation(to: app)
-            app.activate(from: NSRunningApplication.current, options: [])
-        }
+        NSApp.yieldActivation(to: app)
+        app.activate(from: NSRunningApplication.current, options: [])
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool
