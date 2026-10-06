@@ -9,65 +9,45 @@ import SwiftUI
 
 struct SettingsAdvancedTabView: View {
     @StateObject private var viewModel = ViewModel()
-
     var body: some View {
-        VStack {
-            Text("SETTINGS_ADVANCED_BLURB")
-                .multilineTextAlignment(.leading)
-                .lineLimit(nil)
-                .padding([.top, .leading, .trailing])
-                .frame(maxWidth: .infinity, alignment: .leading)
-            HStack {
-                Toggle(isOn: $viewModel.keepPatches) {
-                    Text("SETTINGS_ADVANCED_KEEP_PATCHES")
-                }
-                .padding(.leading)
-                Spacer()
+        VStack(spacing: 18) {
+            SettingsSection(title: "Runtime", symbol: "gearshape.2") {
+                Text("SETTINGS_ADVANCED_BLURB").foregroundStyle(.secondary)
+                Toggle(
+                    "SETTINGS_ADVANCED_KEEP_PATCHES",
+                    isOn: $viewModel.keepPatches)
+                Toggle("SETTINGS_ADVANCED_MSYNC", isOn: $viewModel.mSync)
+                Toggle(
+                    "SETTINGS_ADVANCED_ENCRYPT_ARGS",
+                    isOn: $viewModel.encryptArgs)
             }
-            HStack {
-                Toggle(isOn: $viewModel.mSync) {
-                    Text("SETTINGS_ADVANCED_MSYNC")
-                }
-                .padding(.leading)
-                Spacer()
+            SettingsSection(title: "Game session", symbol: "gamecontroller") {
+                Toggle(
+                    "SETTINGS_ADVANCED_AUTO_EXIT", isOn: $viewModel.exitWithGame
+                )
+                Toggle(
+                    "SETTINGS_ADVANCED_ERROR_EXIT",
+                    isOn: $viewModel.nonZeroExitError)
             }
-            HStack {
-                Toggle(isOn: $viewModel.encryptArgs) {
-                    Text("SETTINGS_ADVANCED_ENCRYPT_ARGS")
-                }
-                .padding(.leading)
-                Spacer()
+            SettingsSection(title: "Diagnostics", symbol: "terminal") {
+                TextField(
+                    "SETTINGS_ADVANCED_WINE_DEBUG", text: $viewModel.wineDebug
+                )
+                .textFieldStyle(.roundedBorder).disableAutocorrection(true)
             }
-            HStack {
-                Toggle(isOn: $viewModel.exitWithGame) {
-                    Text("SETTINGS_ADVANCED_AUTO_EXIT")
-                }
-                .padding(.leading)
-                Spacer()
-            }
-            HStack {
-                Toggle(isOn: $viewModel.nonZeroExitError) {
-                    Text("SETTINGS_ADVANCED_ERROR_EXIT")
-                }
-                .padding(.leading)
-                Spacer()
-            }
-            HStack {
-                Text("SETTINGS_ADVANCED_WINE_DEBUG")
-                    .padding(.leading)
-                TextField("", text: $viewModel.wineDebug)
-                    .disableAutocorrection(true)
-            }
-            Spacer()
         }
     }
 }
 
-struct SettingsAdvancedTabView_Previews: PreviewProvider {
-    static var previews: some View {
-        SettingsAdvancedTabView()
+#if DEBUG
+    #Preview("Advanced") {
+        ScrollView {
+            SettingsAdvancedTabView().padding(28)
+        }
+        .frame(width: 755, height: 640)
+        .tint(XOMStyle.accent)
     }
-}
+#endif
 
 extension SettingsAdvancedTabView {
     @MainActor class ViewModel: ObservableObject {

@@ -8,252 +8,160 @@
 import SwiftUI
 
 struct FirstAidView: View {
-    @StateObject private var firstAidModel: FirstAidModel = .init()
+    @StateObject private var model = FirstAidModel()
+    @State private var notice: AppNotice?
+    @State private var confirmPrefix = false
+    @State private var working = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                SettingsSection(
+                    title: "FIRSTAID_CONFIG_HEADING", symbol: "checkmark.shield"
+                ) {
+                    Text("FIRSTAID_CHECKUP_BLURB").foregroundStyle(.secondary)
+                    HStack {
+                        Label(
+                            resultTitle,
+                            systemImage: model.cfgCheckOverallResult == .problem
+                                ? "exclamationmark.triangle.fill"
+                                : "checkmark.shield.fill"
+                        )
+                        .foregroundStyle(
+                            model.cfgCheckOverallResult == .problem
+                                ? .orange : .green)
+                        Spacer()
+                        Button("FIRSTAID_CHECKUP_BUTTON") { model.reloadCfg() }
+                    }
+                    ForEach(model.cfgProblems) { problem in
+                        Divider()
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(
+                                systemName: problem.fixed
+                                    ? "checkmark.circle.fill"
+                                    : "exclamationmark.circle"
+                            )
+                            .font(.title3).foregroundStyle(
+                                problem.fixed ? .green : .orange)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(problem.title).font(.headline)
+                                if problem.fixed {
+                                    Text("FIRSTAID_CFGCHECK_FIXED")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Text(problem.explanation).font(.callout)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            if !problem.fixed {
+                                Button("FIRSTAID_CFGCHECK_FIX_BUTTON") {
+                                    guard checkIfNotRunning() else { return }
+                                    model.fix(condition: problem)
+                                }
+                            }
+                        }
+                    }
+                }
+                SettingsSection(
+                    title: "FIRSTAID_SHADER_CACHE_HEADING",
+                    symbol: "sparkles.rectangle.stack"
+                ) {
+                    Text("FIRSTAID_SHADER_CACHE_BLURB").foregroundStyle(
+                        .secondary)
+                    Button("FIRSTAID_SHADER_CACHE_BUTTON") {
+                        perform(
+                            success: "DXMT_USER_CACHE_DELETED",
+                            successInfo: "DXMT_USER_CACHE_DELETED_INFORMATIVE",
+                            failure: "DXMT_USER_CACHE_DELETE_FAILED",
+                            operation: Dxmt.resetCache)
+                    }
+                }
+                SettingsSection(
+                    title: "FIRSTAID_CONFIG_HEADING",
+                    symbol: "slider.horizontal.3"
+                ) {
+                    Text("FIRSTAID_RESET_CONFIG_BLURB").foregroundStyle(
+                        .secondary)
+                    Button("FIRSTAID_RESET_CONFIG_BUTTON") {
+                        perform(
+                            success: "GAME_CONFIG_RESET",
+                            successInfo: "GAME_CONFIG_RESET_INFORMATIVE",
+                            failure: "GAME_CONFIG_RESET_FAILED",
+                            operation: FFXIVApp.resetConfiguration)
+                    }
+                }
+                SettingsSection(
+                    title: "FIRSTAID_PREFIX_HEADING", symbol: "externaldrive"
+                ) {
+                    Text("FIRSTAID_PREFIX_BLURB").foregroundStyle(.secondary)
+                    Button("FIRSTAID_PREFIX_BUTTON", role: .destructive) {
+                        if checkIfNotRunning() { confirmPrefix = true }
+                    }
+                }
+                if working { ProgressView().frame(maxWidth: .infinity) }
+            }.padding(28).disabled(working)
+        }
+        .frame(minWidth: 700, minHeight: 590)
+        .modifier(AppWindowBackground()).notice($notice)
+        .confirmationDialog(
+            "FIRSTAID_PREFIX_CONFIRM", isPresented: $confirmPrefix,
+            titleVisibility: .visible
+        ) {
+            Button("BUTTON_DELETE", role: .destructive) {
+                perform(
+                    success: "FIRSTAID_PREFIX_DELETED",
+                    successInfo: "FIRSTAID_PREFIX_DELETED_INFORMATIVE",
+                    failure: "FIRSTAID_PREFIX_DELETE_FAILED",
+                    operation: Wine.deletePrefix)
+            }
+            Button("BUTTON_CANCEL", role: .cancel) {}
+        } message: {
+            Text("FIRSTAID_PREFIX_CONFIRM_INFORMATIVE")
+        }
+    }
+
+    private var resultTitle: LocalizedStringKey {
+        switch model.cfgCheckOverallResult {
+        case .noissue: "FIRSTAID_CFGCHECK_GOOD_RESULT"
+        case .advisory: "FIRSTAID_CFGCHECK_ADVISORY_RESULT"
+        case .recommendation: "FIRSTAID_CFGCHECK_RECOMMENDATION_RESULT"
+        case .problem: "FIRSTAID_CFGCHECK_PROBLEM_RESULT"
+        }
+    }
 
     private func checkIfNotRunning() -> Bool {
         // Since we're deleting or otherwise mucking with files the game may be using or may re-write,
         // we generally want no copies running.
         if Wine.running(processName: "ffxiv_dx11.exe") {
-            let alert: NSAlert = .init()
-            alert.alertStyle = .warning
-            alert.messageText = NSLocalizedString(
-                "FIRSTAID_GAME_RUNNING", comment: "")
-            alert.informativeText = NSLocalizedString(
-                "FIRSTAID_GAME_RUNNING", comment: "")
-            alert.addButton(
-                withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-            alert.runModal()
+            notice = AppNotice("FIRSTAID_GAME_RUNNING", "FIRSTAID_GAME_RUNNING")
             return false
         }
         return true
     }
 
-    var cfgProblems: some View {
-        ScrollView(showsIndicators: true) {
-            LazyVStack(alignment: .leading) {
-                ForEach(firstAidModel.cfgProblems) { oneProblem in
-                    HStack {
-                        switch oneProblem.type {
-                        case .advisory:
-                            if oneProblem.fixed {
-                                Image(
-                                    nsImage: NSImage(named: "CfgCheckAdvFixed")!
-                                )
-                            } else {
-                                Image(
-                                    nsImage: NSImage(
-                                        named: "CfgCheckAdvFailed")!)
-                            }
-                        case .problem:
-                            if oneProblem.fixed {
-                                Image(
-                                    nsImage: NSImage(
-                                        named: "CfgCheckProbFixed")!)
-                            } else {
-                                Image(
-                                    nsImage: NSImage(
-                                        named: "CfgCheckProbFailed")!)
-                            }
-                        default:
-                            Image(nsImage: NSImage(named: "CfgCheckGood")!)
-                        }
-                        VStack {
-                            Text(oneProblem.title)
-                                .font(Font.headline)
-                                .frame(maxWidth: .infinity)
-                            if oneProblem.fixed {
-                                Text("FIRSTAID_CFGCHECK_FIXED")
-                                    .font(Font.headline)
-                                    .frame(maxWidth: .infinity)
-                            } else {
-                                Text(oneProblem.explanation)
-                                    .frame(maxWidth: .infinity)
-                            }
-                        }
-                        Spacer()
-                        if !oneProblem.fixed {
-                            Button("FIRSTAID_CFGCHECK_FIX_BUTTON") {
-                                self.firstAidModel.fix(condition: oneProblem)
-                            }.padding(.trailing)
-                        }
-                    }
-                }
+    private func perform(
+        success: String, successInfo: String, failure: String,
+        operation: @escaping () throws -> Void
+    ) {
+        guard checkIfNotRunning() else { return }
+        working = true
+        Task {
+            do {
+                try await backgroundWork(operation)
+                model.reloadCfg()
+                notice = AppNotice(success, successInfo)
+            } catch {
+                Log.error(error.localizedDescription)
+                notice = AppNotice(failure, error.localizedDescription)
             }
-        }.frame(minHeight: 100)
-    }
-
-    var body: some View {
-        VStack {
-            Group {
-                Text("FIRSTAID_SHADER_CACHE_HEADING")
-                    .font(Font.title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text("FIRSTAID_SHADER_CACHE_BLURB")
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.leading, .trailing])
-                Button("FIRSTAID_SHADER_CACHE_BUTTON") {
-                    guard checkIfNotRunning() else {
-                        return
-                    }
-                    let alert = NSAlert()
-                    do {
-                        try Dxmt.resetCache()
-                        alert.alertStyle = .informational
-                        alert.messageText = NSLocalizedString(
-                            "DXMT_USER_CACHE_DELETED", comment: "")
-                        alert.informativeText = NSLocalizedString(
-                            "DXMT_USER_CACHE_DELETED_INFORMATIVE", comment: "")
-                    } catch {
-                        Log.error(error.localizedDescription)
-                        alert.alertStyle = .warning
-                        alert.messageText = NSLocalizedString(
-                            "DXMT_USER_CACHE_DELETE_FAILED", comment: "")
-                        alert.informativeText = NSLocalizedString(
-                            "DXMT_USER_CACHE_DELETE_FAILED_INFORMATIVE",
-                            comment: "")
-                    }
-                    alert.addButton(
-                        withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-                    alert.runModal()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            Divider()
-            Group {
-                Text("FIRSTAID_PREFIX_HEADING")
-                    .font(Font.title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text("FIRSTAID_PREFIX_BLURB")
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.leading, .trailing])
-                Button("FIRSTAID_PREFIX_BUTTON") {
-                    guard checkIfNotRunning() else {
-                        return
-                    }
-                    let confirm = NSAlert()
-                    confirm.alertStyle = .warning
-                    confirm.messageText = NSLocalizedString(
-                        "FIRSTAID_PREFIX_CONFIRM", comment: "")
-                    confirm.informativeText = NSLocalizedString(
-                        "FIRSTAID_PREFIX_CONFIRM_INFORMATIVE", comment: "")
-                    confirm.addButton(
-                        withTitle: NSLocalizedString(
-                            "BUTTON_DELETE", comment: ""))
-                    confirm.addButton(
-                        withTitle: NSLocalizedString(
-                            "BUTTON_CANCEL", comment: ""))
-                    guard confirm.runModal() == .alertFirstButtonReturn else {
-                        return
-                    }
-                    let alert = NSAlert()
-                    do {
-                        try Wine.deletePrefix()
-                        alert.alertStyle = .informational
-                        alert.messageText = NSLocalizedString(
-                            "FIRSTAID_PREFIX_DELETED", comment: "")
-                        alert.informativeText = NSLocalizedString(
-                            "FIRSTAID_PREFIX_DELETED_INFORMATIVE", comment: "")
-                    } catch {
-                        Log.error(error.localizedDescription)
-                        alert.alertStyle = .warning
-                        alert.messageText = NSLocalizedString(
-                            "FIRSTAID_PREFIX_DELETE_FAILED", comment: "")
-                        alert.informativeText = NSLocalizedString(
-                            "FIRSTAID_PREFIX_DELETE_FAILED_INFORMATIVE",
-                            comment: "")
-                    }
-                    alert.addButton(
-                        withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-                    alert.runModal()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            Divider()
-            Group {
-                Text("FIRSTAID_CONFIG_HEADING")
-                    .font(Font.title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("FIRSTAID_RESET_CONFIG_BLURB")
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.leading, .trailing])
-                Button("FIRSTAID_RESET_CONFIG_BUTTON") {
-                    guard checkIfNotRunning() else {
-                        return
-                    }
-                    let alert = NSAlert()
-                    do {
-                        try FFXIVApp.resetConfiguration()
-                        alert.alertStyle = .informational
-                        alert.messageText = NSLocalizedString(
-                            "GAME_CONFIG_RESET", comment: "")
-                        alert.informativeText = NSLocalizedString(
-                            "GAME_CONFIG_RESET_INFORMATIVE", comment: "")
-                    } catch {
-                        Log.error(error.localizedDescription)
-                        alert.alertStyle = .warning
-                        alert.messageText = NSLocalizedString(
-                            "GAME_CONFIG_RESET_FAILED", comment: "")
-                        alert.informativeText = NSLocalizedString(
-                            "GAME_CONFIG_RESET_FAILED_INFORMATIVE", comment: "")
-                    }
-                    alert.addButton(
-                        withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-                    alert.runModal()
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Text("FIRSTAID_CHECKUP_BLURB")
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.leading, .trailing])
-                HStack {
-                    Button("FIRSTAID_CHECKUP_BUTTON") {
-                        firstAidModel.reloadCfg()
-                    }
-                    Spacer()
-                }
-            }
-            Group {
-                HStack {
-                    switch $firstAidModel.cfgCheckOverallResult.wrappedValue {
-                    case .noissue:
-                        Image(nsImage: NSImage(named: "CfgCheckGood.tiff")!)
-                        Text("FIRSTAID_CFGCHECK_GOOD_RESULT")
-                    case .advisory:
-                        Image(
-                            nsImage: NSImage(named: "CfgCheckAdvFailed.tiff")!)
-                        Text("FIRSTAID_CFGCHECK_ADVISORY_RESULT")
-                    case .recommendation:
-                        Image(nsImage: NSImage(named: "CfgCheckGood.tiff")!)
-                        Text("FIRSTAID_CFGCHECK_RECOMMENDATION_RESULT")
-                    case .problem:
-                        Image(nsImage: NSImage(named: "CfgCheckProblems.tiff")!)
-                        Text("FIRSTAID_CFGCHECK_PROBLEM_RESULT")
-                    }
-                    Spacer()
-                }
-                if firstAidModel.cfgProblems.count > 0 {
-                    cfgProblems
-                }
-            }
-            .padding([.leading])
-            Spacer()
+            working = false
         }
-        .padding()
-        .frame(width: 700, height: 820.0)
     }
 }
 
-struct FirstAidWindowContent_Previews: PreviewProvider {
-    static var previews: some View {
-        FirstAidView()
+#if DEBUG
+    #Preview("First Aid") {
+        FirstAidView().frame(width: 780, height: 780).tint(XOMStyle.accent)
     }
-}
+#endif

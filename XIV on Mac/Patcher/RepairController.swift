@@ -5,16 +5,13 @@
 //  Created by Marc-Aurel Zent on 27.05.22.
 //
 
-import Cocoa
-import OrderedCollections
+import Foundation
+import SwiftUI
 import XIVLauncher
 
-// MARK: - RepairProgress
-
-private struct RepairProgress: Codable {
+private struct RepairProgress: Decodable {
     let currentStep, currentFile: String
     let total, progress, speed: Int64
-
     enum CodingKeys: String, CodingKey {
         case currentStep = "CurrentStep"
         case currentFile = "CurrentFile"
@@ -23,84 +20,100 @@ private struct RepairProgress: Codable {
         case speed = "Speed"
     }
 
-    init() throws {
-        let repairCString = queryRepairProgress()!
-        let repairProgressJSON = String(cString: repairCString)
-        free(UnsafeMutableRawPointer(mutating: repairCString))
-        do {
-            self = try JSONDecoder().decode(
-                RepairProgress.self,
-                from: repairProgressJSON.data(using: .utf8)!)
-        } catch {
-            throw XLError.runtimeError(repairProgressJSON).tryMap
-        }
+    static func read() -> RepairProgress? {
+        guard let pointer = queryRepairProgress() else { return nil }
+        defer { free(UnsafeMutableRawPointer(mutating: pointer)) }
+        return try? JSONDecoder().decode(
+            Self.self, from: Data(String(cString: pointer).utf8))
     }
 }
 
-class RepairController: NSViewController {
-    @IBOutlet private var repairStatus: NSTextField!
-    @IBOutlet private var currentFile: NSTextField!
-    @IBOutlet private var repairBar: NSProgressIndicator!
-
-    private var timer: Timer?
-    let formatter = ByteCountFormatter()
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        formatter.allowedUnits = .useAll
-        formatter.countStyle = .file
-        formatter.includesUnit = true
-        formatter.isAdaptive = true
+#if DEBUG
+    extension RepairController {
+        static var preview: RepairController {
+            let model = RepairController()
+            model.status = String(localized: "Checking game files…")
+            model.file = "game/sqpack/ffxiv/000000.win32.dat0"
+            model.progress = 0.45
+            return model
+        }
     }
 
-    override func viewWillAppear() {
-        super.viewWillAppear()
-        repairBar.usesThreadedAnimation = true
-        updateProgress()
+    #Preview("Repair progress") {
+        RepairProgressView(model: .preview).padding(24).frame(width: 304)
+            .tint(XOMStyle.accent)
     }
+#endif
 
-    func repair(_ loginResult: LoginResult) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            Wine.kill()
-            DispatchQueue.main.async { [self] in
-                let updateInterval = 0.25
-                timer = Timer.scheduledTimer(
-                    withTimeInterval: updateInterval, repeats: true
-                ) { _ in
-                    self.updateProgress()
+@MainActor
+final class RepairController: ObservableObject {
+    @Published private(set) var status = ""
+    @Published private(set) var file = ""
+    @Published private(set) var progress = 0.0
+
+    func repair(_ result: LoginResult) async -> String {
+        status = String(localized: "Checking game files…")
+        file = ""
+        progress = 0
+        let polling = Task {
+            while !Task.isCancelled {
+                if let update = try? await backgroundWork({
+                    RepairProgress.read()
+                }) {
+                    guard !Task.isCancelled else { break }
+                    let step = NSLocalizedString(
+                        update.currentStep, comment: "")
+                    status = String(
+                        localized:
+                            "\(step) · \(ByteCountFormatter.string(fromByteCount: update.speed, countStyle: .file))/s"
+                    )
+                    file = update.currentFile
+                    progress =
+                        update.total > 0
+                        ? min(
+                            1,
+                            max(
+                                0,
+                                Double(update.progress) / Double(update.total)))
+                        : 0
+                }
+                do { try await Task.sleep(nanoseconds: 250_000_000) } catch {
+                    break
                 }
             }
-            let repairResult = loginResult.repairGame()
-            DispatchQueue.main.async { [self] in
-                timer?.invalidate()
-                view.window?.close()
-                let alert = NSAlert()
-                alert.addButton(
-                    withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-                alert.alertStyle = .critical
-                alert.messageText = NSLocalizedString(
-                    "REPAIR_RESULT", comment: "")
-                alert.informativeText = repairResult
-                alert.runModal()
-            }
         }
+        let resultMessage =
+            (try? await backgroundWork {
+                Wine.kill()
+                return result.repairGame()
+            }) ?? String(localized: "Repair could not be completed.")
+        polling.cancel()
+        await polling.value
+        return localizedRepairResult(resultMessage)
     }
 
-    private func updateProgress() {
-        guard let repairProgress = try? RepairProgress() else {
-            return
+    private func localizedRepairResult(_ message: String) -> String {
+        let scanner = Scanner(string: message)
+        if scanner.scanString("XIV on Mac has successfully repaired") != nil,
+            let count = scanner.scanInt(),
+            let suffix = scanner.scanUpToCharacters(from: .newlines),
+            ["game file.", "game files."].contains(suffix), scanner.isAtEnd
+        {
+            return String(localized: "Game files repaired: \(count)")
         }
-        DispatchQueue.main.async { [self] in
-            repairStatus.stringValue =
-                repairProgress.currentStep
-                + " (\(formatter.string(fromByteCount: repairProgress.speed))/sec)"
-            currentFile.stringValue = repairProgress.currentFile
-            repairBar.doubleValue = Double(repairProgress.progress)
-            repairBar.maxValue = Double(repairProgress.total)
-        }
+        return NSLocalizedString(message, comment: "")
     }
+}
 
-    @IBAction func quit(_ sender: Any) {
-        Util.quit()
+struct RepairProgressView: View {
+    @ObservedObject var model: RepairController
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ProgressView(value: model.progress)
+            Text(model.status).font(.callout)
+            Text(model.file).font(.caption).foregroundStyle(.secondary)
+                .lineLimit(2).truncationMode(
+                    .middle)
+        }
     }
 }

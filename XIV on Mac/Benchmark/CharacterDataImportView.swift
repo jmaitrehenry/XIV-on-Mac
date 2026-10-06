@@ -7,33 +7,37 @@
 
 import SwiftUI
 
-struct CharacterSlotParentView: View {
-    var oneCharacter: CharacterDataSlot
-    public let selected: Bool
-
-    var body: some View {
-        CharacterSlotView(characterData: oneCharacter, selected: selected)
-            .listRowBackground(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
 struct CharacterDataListView: View {
-    @Binding public var characterData: [CharacterDataSlot]
-    @Binding public var selection: Int?
-
+    @Binding var characterData: [CharacterDataSlot]
+    @Binding var selection: Int?
     var body: some View {
         List(selection: $selection) {
-            ForEach(characterData) { oneCharacter in
+            ForEach(characterData) { character in
                 CharacterSlotView(
-                    characterData: oneCharacter,
-                    selected: (selection == oneCharacter.id))
+                    characterData: character,
+                    selected: selection == character.id
+                )
+                .tag(character.id).listRowSeparator(.hidden).listRowBackground(
+                    Color.clear)
             }
-        }
-        .listStyle(.bordered)
-        .id(UUID())  // Dumb hack, but this causes SwiftUI to actually re-render the CharacterSlotView on change for... reasons.
-        //.scrollContentBackground(.hidden)
+        }.listStyle(.plain).scrollContentBackground(.hidden)
     }
 }
+
+#if DEBUG
+    #Preview("Import characters") {
+        CharacterDataImportView().frame(width: 760, height: 640).tint(
+            XOMStyle.accent)
+    }
+
+    #Preview("Character list") {
+        CharacterDataListView(
+            characterData: .constant([PreviewContent.character]),
+            selection: .constant(1)
+        )
+        .frame(width: 340, height: 400)
+    }
+#endif
 
 class CharacterListState: ObservableObject {
     @Published var targetCharacters: [CharacterDataSlot] = [CharacterDataSlot]()
@@ -80,146 +84,116 @@ class CharacterListState: ObservableObject {
 
 struct CharacterDataImportView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var characterListState = CharacterListState()
-
-    @State private var benchmarkCharacterSelection: Int?
-    @State private var importableCharacterSelection: Int?
-    @State private var discordCrew: Bool = false
-
-    func loadDiscordCrew() {
-        if !discordCrew {
-            discordCrew = true
-            characterListState.loadSourceFromDiscordTeam()
-            importableCharacterSelection = nil
-        }
-    }
+    @StateObject private var state = CharacterListState()
+    @State private var targetSelection: Int?
+    @State private var sourceSelection: Int?
+    @State private var discordCrew = false
+    @State private var confirmingDelete = false
+    @State private var notice: AppNotice?
 
     var body: some View {
-        let benchmarkVersion: BenchmarkVersion = Benchmark.benchmarkVersion()
-        GeometryReader { geometry in
-            ZStack(alignment: .bottom) {
-                KwehView(chocoWalkUnits: 15, chocoFence: 500)
+        VStack(alignment: .leading, spacing: 20) {
+            ToolHeader(
+                title: "BENCHMARK_IMPORT_CHARACTER_BUTTON",
+                subtitle: "Bring a familiar face on your next adventure.",
+                symbol: "person.crop.rectangle.stack")
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("BENCHMARK_SLOTS_LIST_LABEL").font(.headline)
+                    CharacterDataListView(
+                        characterData: $state.targetCharacters,
+                        selection: $targetSelection)
+                    HStack {
+                        Button(
+                            "BENCHMARK_SLOT_DELETE_BUTTON", role: .destructive
+                        ) { confirmingDelete = true }
+                        .disabled(selectedTarget?.path == nil)
+                        if Benchmark.benchmarkVersion() == .dawntrail {
+                            Button("BENCHMARK_SLOT_EXPORT_BUTTON") {
+                                if let character = selectedTarget {
+                                    Benchmark.exportCharacterData(
+                                        character: character)
+                                    state.loadSourceFromRetail()
+                                    discordCrew = false
+                                    targetSelection = nil
+                                }
+                            }.disabled(selectedTarget?.path == nil)
+                        }
+                    }
+                }.padding(18).xomGlass(radius: 18)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("AVAILABLE_SLOTS_LIST_LABEL").font(.headline)
+                    CharacterDataListView(
+                        characterData: $state.sourceCharacters,
+                        selection: $sourceSelection)
+                    Button("BENCHMARK_SLOT_IMPORT_BUTTON") {
+                        if let character = state.sourceCharacters.first(where: {
+                            $0.id == sourceSelection
+                        }) {
+                            Benchmark.importCharacterData(character: character)
+                            state.loadTargetFromDemo()
+                            sourceSelection = nil
+                        }
+                    }.disabled(
+                        state.sourceCharacters.first(where: {
+                            $0.id == sourceSelection
+                        })?.path == nil)
+                }.padding(18).xomGlass(radius: 18)
+            }
+            if discordCrew {
+                Text("BENCHMARK_DISCORD_BLURB").font(.caption).foregroundStyle(
+                    .secondary)
+            }
+            HStack {
+                KwehView(chocoWalkUnits: 5, chocoFence: 70).frame(
+                    width: 160, height: 48
+                ).clipped()
                     .onTapGesture {
-                        loadDiscordCrew()
-                    }
-                VStack {
-                    HStack {
-                        VStack {
-                            Text("BENCHMARK_SLOTS_LIST_LABEL").font(.title)
-                            CharacterDataListView(
-                                characterData: $characterListState
-                                    .targetCharacters,
-                                selection: $benchmarkCharacterSelection)
-                            HStack {
-                                Button(
-                                    "BENCHMARK_SLOT_DELETE_BUTTON",
-                                    role: .destructive
-                                ) {
-                                    let alert: NSAlert = .init()
-                                    alert.messageText = NSLocalizedString(
-                                        "BENCHMARK_CONFIRM_SLOT_DELETE",
-                                        comment: "")
-                                    alert.informativeText = NSLocalizedString(
-                                        "BENCHMARK_CONFIRM_SLOT_DELETE_INFORMATIVE",
-                                        comment: "")
-                                    alert.alertStyle = .warning
-                                    alert.addButton(
-                                        withTitle: NSLocalizedString(
-                                            "BUTTON_DELETE", comment: ""))
-                                    alert.addButton(
-                                        withTitle: NSLocalizedString(
-                                            "BUTTON_CANCEL", comment: ""))
-                                    let result = alert.runModal()
-                                    if result == .alertFirstButtonReturn {
-                                        if let deleteCharacter =
-                                            characterListState.targetCharacters
-                                            .filter({
-                                                $0.id
-                                                    == benchmarkCharacterSelection
-                                            }).first
-                                        {
-                                            if let path = deleteCharacter.path {
-                                                try? FileManager.default
-                                                    .removeItem(at: path)
-                                            }
-                                        }
-                                        characterListState.loadTargetFromDemo()
-                                        benchmarkCharacterSelection = nil
-                                    }
-
-                                }
-                                .disabled(benchmarkCharacterSelection == nil)
-                                // Don't offer the export button if the Benchmark is for an unsupported version
-                                // Mostly this is forward-thinking to the next expansion.
-                                if benchmarkVersion == .dawntrail {
-                                    Button("BENCHMARK_SLOT_EXPORT_BUTTON") {
-                                        if let exportCharacter:
-                                            CharacterDataSlot =
-                                            characterListState.targetCharacters
-                                            .filter({
-                                                $0.id
-                                                    == benchmarkCharacterSelection
-                                            }).first
-                                        {
-                                            Benchmark.exportCharacterData(
-                                                character: exportCharacter)
-                                            characterListState
-                                                .loadSourceFromRetail()
-                                            benchmarkCharacterSelection = nil
-                                        }
-                                    }
-                                    .disabled(
-                                        benchmarkCharacterSelection == nil)
-
-                                }
-                            }
-                            Spacer()
-                        }
-                        Divider()
-                        VStack {
-                            Text("AVAILABLE_SLOTS_LIST_LABEL").font(.title)
-                            CharacterDataListView(
-                                characterData: $characterListState
-                                    .sourceCharacters,
-                                selection: $importableCharacterSelection)
-                            Button("BENCHMARK_SLOT_IMPORT_BUTTON") {
-                                if let importCharacter: CharacterDataSlot =
-                                    characterListState.sourceCharacters.filter({
-                                        $0.id == importableCharacterSelection
-                                    }).first
-                                {
-                                    Benchmark.importCharacterData(
-                                        character: importCharacter)
-                                    characterListState.loadTargetFromDemo()
-                                    importableCharacterSelection = nil
-                                }
-                            }
-                            .disabled(importableCharacterSelection == nil)
-                            Spacer()
-                        }
-                    }
-                    if discordCrew {
-                        Text("BENCHMARK_DISCORD_BLURB")
-                    }
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Button("BUTTON_DONE") {
-                            dismiss()
-                        }
-                        .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
-                    }
+                        discordCrew = true
+                        state.loadSourceFromDiscordTeam()
+                        sourceSelection = nil
+                    }.accessibilityLabel("Chocobo").accessibilityHint(
+                        "Show the XIV on Mac team’s characters")
+                Spacer()
+                Button("BUTTON_DONE") { dismiss() }.xomPrimaryButton()
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(28).notice($notice)
+        .onAppear {
+            #if DEBUG
+                if Util.isPreview {
+                    state.targetCharacters = state.pad(cdsArray: [], toSize: 40)
+                    state.sourceCharacters = [PreviewContent.character]
+                    return
                 }
-            }.padding()
-                .onAppear {
-                    characterListState.loadTargetFromDemo()
-                    characterListState.loadSourceFromRetail()
+            #endif
+            state.loadTargetFromDemo()
+            state.loadSourceFromRetail()
+        }
+        .confirmationDialog(
+            "BENCHMARK_CONFIRM_SLOT_DELETE", isPresented: $confirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button("BUTTON_DELETE", role: .destructive) {
+                do {
+                    if let path = selectedTarget?.path {
+                        try FileManager.default.removeItem(at: path)
+                    }
+                    state.loadTargetFromDemo()
+                    targetSelection = nil
+                } catch {
+                    notice = AppNotice(
+                        "BENCHMARK_TITLE", error.localizedDescription)
                 }
+            }
+            Button("BUTTON_CANCEL", role: .cancel) {}
+        } message: {
+            Text("BENCHMARK_CONFIRM_SLOT_DELETE_INFORMATIVE")
         }
     }
-}
 
-#Preview {
-    CharacterDataImportView()
+    private var selectedTarget: CharacterDataSlot? {
+        state.targetCharacters.first { $0.id == targetSelection }
+    }
 }

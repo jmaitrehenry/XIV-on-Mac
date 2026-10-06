@@ -5,7 +5,7 @@
 //  Created by Marc-Aurel Zent on 25.02.22.
 //
 
-import AppKit
+import Foundation
 import XIVLauncher
 
 public struct Patch: Codable {
@@ -78,7 +78,7 @@ public struct Patch: Codable {
         }
     }
 
-    func install() {
+    func install() throws {
         let patchPath = Patch.dir.appendingPathComponent(path).path
         let patchPathCString = FileManager.default.fileSystemRepresentation(
             withPath: patchPath)
@@ -86,21 +86,9 @@ public struct Patch: Codable {
             patchPathCString, Int(length), hashBlockSize, hashType,
             hashes?.joined(separator: ",") ?? "")
         guard valid else {
-            DispatchQueue.main.sync {
-                let alert = NSAlert()
-                alert.addButton(
-                    withTitle: NSLocalizedString(
-                        "PATCH_ERROR_BUTTON", comment: ""))
-                alert.alertStyle = .critical
-                alert.messageText = NSLocalizedString(
-                    "PATCH_ERROR_MESSAGE", comment: "")
-                alert.informativeText = NSLocalizedString(
-                    "PATCH_ERROR_INFORMATIVE", comment: "")
-                alert.runModal()
-                try! FileManager.default.removeItem(atPath: patchPath)
-                Util.quit()
-            }
-            return
+            try? FileManager.default.removeItem(atPath: patchPath)
+            throw PatchError.failed(
+                NSLocalizedString("PATCH_ERROR_INFORMATIVE", comment: ""))
         }
         var repo = self.repo
         let res = String(
@@ -109,21 +97,19 @@ public struct Patch: Codable {
             repo.ver = version
             Log.information("Updated ver to \(repo.ver)")
         } else {
-            DispatchQueue.main.sync {
-                let alert = NSAlert()
-                alert.addButton(
-                    withTitle: NSLocalizedString(
-                        "PATCH_ERROR_MESSAGE", comment: ""))
-                alert.alertStyle = .critical
-                alert.messageText = NSLocalizedString(
-                    "PATCH_ERROR_MESSAGE", comment: "")
-                alert.informativeText = res
-                alert.runModal()
-                Util.quit()
-            }
+            throw PatchError.failed(res)
         }
         if !Patch.keep {
             try? FileManager.default.removeItem(atPath: patchPath)
+        }
+    }
+}
+
+private enum PatchError: LocalizedError {
+    case failed(String)
+    var errorDescription: String? {
+        switch self {
+        case .failed(let message): return message
         }
     }
 }

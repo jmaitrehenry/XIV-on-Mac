@@ -9,54 +9,66 @@ import SwiftUI
 
 struct SettingsGraphicsTabView: View {
     @StateObject private var viewModel = ViewModel()
-
+    @State private var confirmRetina = false
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                Toggle(isOn: $viewModel.metal3Hud) {
-                    Text("SETTINGS_GRAPHICS_METAL3_HUD")
-                }
-
-                Toggle(isOn: $viewModel.metalFxSpatialEnabled) {
-                    Text("METALFX_SPATIAL_ENABLED")
-                }
-
-                HStack(spacing: 8) {
-                    Toggle(isOn: $viewModel.fpsLimited) {
-                        Text("SETTINGS_FPS_LIMIT")
-                    }
+        VStack(spacing: 18) {
+            SettingsSection(
+                title: "Performance", symbol: "gauge.with.dots.needle.67percent"
+            ) {
+                Toggle(
+                    "SETTINGS_GRAPHICS_METAL3_HUD", isOn: $viewModel.metal3Hud)
+                Toggle(
+                    "METALFX_SPATIAL_ENABLED",
+                    isOn: $viewModel.metalFxSpatialEnabled)
+                HStack {
+                    Toggle("SETTINGS_FPS_LIMIT", isOn: $viewModel.fpsLimited)
+                    Spacer()
                     TextField(
                         "SETTINGS_FPS_LIMIT_PLACEHOLDER",
                         text: $viewModel.fpsLimit
                     )
-                    .frame(minWidth: 50)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .disabled(!viewModel.fpsLimited)
-                    Text("SETTINGS_FPS_LIMIT_UNITS")
-                }
-
-                Toggle(isOn: $viewModel.macScaling) {
-                    Text("SETTINGS_GRAPHICS_RETINA")
+                    .frame(width: 70).disabled(!viewModel.fpsLimited)
+                    Text("SETTINGS_FPS_LIMIT_UNITS").foregroundStyle(.secondary)
                 }
             }
-            .padding(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack {
-                Spacer()
-                Image(nsImage: NSImage(named: "PrefsGraphics") ?? NSImage())
-                    .padding([.trailing, .bottom])
+            SettingsSection(title: "Display", symbol: "display") {
+                Toggle(
+                    "SETTINGS_GRAPHICS_RETINA",
+                    isOn: Binding(
+                        get: { viewModel.macScaling },
+                        set: { enabled in
+                            if enabled {
+                                viewModel.macScaling = true
+                            } else {
+                                confirmRetina = true
+                            }
+                        }))
+                if let illustration = NSImage(named: "PrefsGraphics") {
+                    Image(nsImage: illustration).resizable().scaledToFit()
+                        .frame(height: 130)
+                        .frame(maxWidth: .infinity).accessibilityHidden(true)
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .textFieldStyle(.roundedBorder)
+        .alert("RETINA_WARNING", isPresented: $confirmRetina) {
+            Button("RETINA_ENABLE_BUTTON") { viewModel.macScaling = false }
+            Button("BUTTON_CANCEL", role: .cancel) {}
+        } message: {
+            Text("RETINA_WARNING_INFORMATIVE")
+        }
     }
 }
 
-struct SettingsGraphicsTabView_Previews: PreviewProvider {
-    static var previews: some View {
-        SettingsGraphicsTabView()
+#if DEBUG
+    #Preview("Graphics") {
+        ScrollView {
+            SettingsGraphicsTabView().padding(28)
+        }
+        .frame(width: 755, height: 640)
+        .tint(XOMStyle.accent)
     }
-}
+#endif
 
 extension SettingsGraphicsTabView {
     @MainActor class ViewModel: ObservableObject {
@@ -79,33 +91,7 @@ extension SettingsGraphicsTabView {
         }
 
         @Published var macScaling: Bool = !Wine.retina {
-            didSet {
-                if !macScaling {
-                    // User is turning OFF scaling mode (enabling Retina mode)
-                    // This might be a bad idea...
-                    let alert: NSAlert = .init()
-                    alert.messageText = NSLocalizedString(
-                        "RETINA_WARNING", comment: "")
-                    alert.informativeText = NSLocalizedString(
-                        "RETINA_WARNING_INFORMATIVE", comment: "")
-                    alert.alertStyle = .warning
-                    alert.addButton(
-                        withTitle: NSLocalizedString(
-                            "RETINA_ENABLE_BUTTON", comment: ""))
-                    alert.addButton(
-                        withTitle: NSLocalizedString(
-                            "BUTTON_CANCEL", comment: ""))
-                    let result = alert.runModal()
-                    guard result == .alertFirstButtonReturn else {
-                        DispatchQueue.main.async {
-                            // Change it back
-                            self.macScaling = true
-                        }
-                        return
-                    }
-                }
-                Wine.retina = !macScaling
-            }
+            didSet { Wine.retina = !macScaling }
         }
 
         private func updateFpsLimit() {

@@ -14,7 +14,7 @@ class FirstAidModel: ObservableObject {
     private var ffxivCfg: FFXIVCFG?
 
     init() {
-        reloadCfg()
+        if !Util.isPreview { reloadCfg() }
     }
 
     func updateWorstIssue() {

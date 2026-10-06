@@ -6,8 +6,8 @@
 //
 
 import Base32
-import Cocoa
 import Embassy
+import Foundation
 import KeychainAccess
 
 class OTP {
@@ -22,26 +22,33 @@ class OTP {
         loop = try! SelectorEventLoop(selector: try! KqueueSelector())
         server = DefaultHTTPServer(eventLoop: loop, interface: "::", port: 4646)
         {
+            [weak self]
             (
                 environ: [String: Any],
                 startResponse: (String, [(String, String)]) -> Void,
                 sendBody: (Data) -> Void
             ) in
             // Start HTTP response
-            startResponse("200 OK", [])
+            startResponse(
+                "200 OK", [("Content-Type", "text/plain; charset=utf-8")])
             let pathInfo = environ["PATH_INFO"]! as! String
             let components = pathInfo.split(separator: "/")
             if components.count == 2 && components[0] == "ffxivlauncher"
                 && Int(components[1]) != nil
             {
                 let otp = String(components[1])
-                self.push(otp: otp)
-                sendBody(Data("You successfully send the OTP \(otp)".utf8))
+                self?.push(otp: otp)
+                sendBody(
+                    Data(
+                        String(localized: "OTP \(otp) received successfully.")
+                            .utf8))
             } else {
                 sendBody(
                     Data(
-                        "Please send in the format http://[Your PC Address]:4646/ffxivlauncher/[one-time password]"
-                            .utf8))
+                        String(
+                            localized:
+                                "Please use this format: http://[Your PC Address]:4646/ffxivlauncher/[one-time password]"
+                        ).utf8))
             }
             // send EOF
             sendBody(Data())
@@ -49,6 +56,8 @@ class OTP {
         generator = retrieve(username: username)
         start()
     }
+
+    deinit { stop() }
 
     static func secretStored(username: String) -> Bool {
         return OTP.keychain[data: "\(username)(OTP secret)"] != nil
@@ -70,7 +79,7 @@ class OTP {
 
     private func push(otp: String?) {
         NotificationCenter.default.post(
-            name: .otpPush, object: nil,
+            name: .otpPush, object: self,
             userInfo: [Notification.status.info: otp ?? ""])
     }
 
@@ -93,8 +102,8 @@ class OTP {
             timer.invalidate()
             timer = Timer.scheduledTimer(
                 withTimeInterval: 30, repeats: true,
-                block: { _ in
-                    self.push(otp: self.generator?.token)
+                block: { [weak self] _ in
+                    self?.push(otp: self?.generator?.token)
                 })
         }
     }
@@ -102,59 +111,5 @@ class OTP {
     func stop() {
         stopServer()
         timer.invalidate()
-    }
-}
-
-extension LaunchController {
-    typealias settings = Settings
-
-    func setupOTP() {
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(otpUpdate(_:)), name: .otpPush,
-            object: nil)
-        if settings.usesOneTimePassword {
-            otpCheck.state = .on
-            enableOTP()
-        }
-    }
-
-    @objc func otpUpdate(_ notif: Notification) {
-        let info = notif.userInfo?[Notification.status.info]! as! String
-        DispatchQueue.main.async {
-            self.otpField.stringValue = info
-        }
-    }
-
-    @IBAction func toggleOTP(_ sender: NSButton) {
-        otp?.stop()
-        if sender.state == .off {
-            settings.usesOneTimePassword = false
-            return
-        }
-        settings.usesOneTimePassword = true
-        let username = userField.stringValue
-        if !OTP.secretStored(username: username) {
-            let msg = NSAlert()
-            msg.addButton(
-                withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-            msg.addButton(
-                withTitle: NSLocalizedString("BUTTON_CANCEL", comment: ""))
-            msg.messageText = String(
-                format: NSLocalizedString("OTP_MESSAGE", comment: ""), username)
-            msg.informativeText = NSLocalizedString(
-                "OTP_INFORMATIVE", comment: "")
-            let txt = NSTextField(
-                frame: NSRect(x: 0, y: 0, width: 200, height: 24))
-            msg.accessoryView = txt
-            if msg.runModal() == .alertFirstButtonReturn {
-                OTP.store(username: username, secret: txt.stringValue)
-            }
-            txt.stringValue = ""
-        }
-        enableOTP()
-    }
-
-    func enableOTP() {
-        otp = OTP(username: userField.stringValue)
     }
 }

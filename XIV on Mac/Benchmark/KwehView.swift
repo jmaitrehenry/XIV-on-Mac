@@ -5,12 +5,14 @@
 //  Created by Chris Backas on 4/17/24.
 //
 
+import Combine
 import SwiftUI
 
 struct KwehView: View {
     private let chocoWalkTimer = Timer.publish(
         every: 0.2, on: .main, in: .common
     ).autoconnect()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var chocoWalkUnits: CGFloat = 100
     var chocoFence: CGFloat = 1000
     @State var chocoWalkFrame: UInt = 0
@@ -26,6 +28,7 @@ struct KwehView: View {
             )
             .aspectRatio(contentMode: .fit)
             .onReceive(self.chocoWalkTimer) { _ in
+                guard !reduceMotion else { return }
                 chocoWalkFrame = (chocoWalkFrame + 1) % 2
 
                 // Turn around if we've hit a boundary

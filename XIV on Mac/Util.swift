@@ -15,6 +15,8 @@ extension KeyboardShortcuts.Name {
 }
 
 enum Util {
+    static let isPreview = ProcessInfo.processInfo.environment[
+        "XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let userHome = FileManager.default.homeDirectoryForCurrentUser
     static let applicationSupport = FileManager.default.urls(
         for: .applicationSupportDirectory, in: .userDomainMask
@@ -183,39 +185,5 @@ enum Util {
             }
         }
         return foundSupportedGPU
-    }
-}
-
-extension View {
-    func createNewWindow(
-        title: String, delegate: NSWindowDelegate?,
-        geometry: NSRect = NSRect(x: 20, y: 20, width: 640, height: 500),
-        style: NSWindow.StyleMask = [
-            .titled, .closable, .miniaturizable, .resizable,
-        ]
-    ) -> NSWindow {
-        let window = NSWindow(
-            contentRect: geometry, styleMask: style, backing: .buffered,
-            defer: false)
-        window.center()
-        window.isReleasedWhenClosed = false
-        window.title = title
-        window.delegate = delegate
-        window.contentView = NSHostingView(rootView: self)
-        return window
-    }
-}
-
-struct VisualEffectView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-
-        view.blendingMode = .behindWindow
-        view.isEmphasized = true
-        view.material = .fullScreenUI
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
     }
 }

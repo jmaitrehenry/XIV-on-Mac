@@ -6,6 +6,7 @@
 //
 
 import Cocoa
+import ImageIO
 import OrderedCollections
 import SeeURL
 import XIVLauncher
@@ -71,10 +72,24 @@ class Frontier {
     }
 
     static func fetchImage(url: URL) -> NSImage? {
-        guard let response = fetch(url: url) else {
+        guard let response = fetch(url: url), response.statusCode == 200,
+            let source = CGImageSourceCreateWithData(
+                response.body as CFData, nil),
+            let image = CGImageSourceCreateImageAtIndex(
+                source, 0,
+                [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
+        else {
             return nil
         }
-        return NSImage(data: response.body)
+        return NSImage(
+            cgImage: image,
+            size: NSSize(width: image.width, height: image.height))
+    }
+
+    struct LoadedBanner: Identifiable {
+        let id: String
+        let destination: URL
+        let image: NSImage
     }
 
     struct Gate: Codable {
@@ -127,16 +142,10 @@ class Frontier {
         }
     }
 
-    struct Info: Codable {
-        struct News: Codable {
-            let date: String
-            let title: String
-            let url: String
-            let id: String
-            let tag: String?
-        }
+    typealias Info = FrontierHeadlines
 
-        let news, topics, pinned: [News]
+    static var lodestoneURL: URL {
+        Info.lodestoneURL(languageCode: Settings.language.code)
     }
 
     struct BannerRoot: Codable {
@@ -177,36 +186,28 @@ class Frontier {
     }
 
     static var info: Info? {
-        guard let response = fetch(url: headline) else {
-            return nil
-        }
-        guard
-            let data = String(decoding: response.body, as: UTF8.self)
-                .unescapingUnicodeCharacters.data(using: .utf8)
+        guard let response = fetch(url: headline), response.statusCode == 200
         else {
             return nil
         }
         let jsonDecoder = JSONDecoder()
         do {
-            return try jsonDecoder.decode(Info.self, from: data)
+            return try jsonDecoder.decode(Info.self, from: response.body)
         } catch {
+            Log.warning("Could not decode Frontier headlines: \(error)")
             return nil
         }
     }
 
     static var banners: [BannerRoot.Banner]? {
-        guard let response = fetch(url: banner) else {
-            return nil
-        }
-        guard
-            let data = String(decoding: response.body, as: UTF8.self)
-                .unescapingUnicodeCharacters.data(using: .utf8)
+        guard let response = fetch(url: banner), response.statusCode == 200
         else {
             return nil
         }
         let jsonDecoder = JSONDecoder()
         do {
-            let bannerRoot = try jsonDecoder.decode(BannerRoot.self, from: data)
+            let bannerRoot = try jsonDecoder.decode(
+                BannerRoot.self, from: response.body)
             return bannerRoot.banner.sorted {
                 if let fixOrder0 = $0.fixOrder, let fixOrder1 = $1.fixOrder {
                     return fixOrder0 > fixOrder1
@@ -220,115 +221,8 @@ class Frontier {
                 return $0.orderPriority > $1.orderPriority
             }
         } catch {
+            Log.warning("Could not decode Frontier banners: \(error)")
             return nil
         }
-    }
-}
-
-extension String {
-    var unescapingUnicodeCharacters: String {
-        let mutableString = NSMutableString(string: self)
-        CFStringTransform(mutableString, nil, "Any-Hex/Java" as NSString, true)
-
-        return mutableString as String
-    }
-}
-
-@MainActor class FrontierTableView: NSObject {
-    static let columnText = "text"
-    static let columnIcon = "icon"
-
-    var items: [Frontier.Info.News] = [] {
-        didSet {
-            tableView.reloadData()
-        }
-    }
-
-    var icon: NSImage
-    var tableView: NSTableView
-
-    init(icon: NSImage) {
-        self.icon = icon
-        tableView = NSTableView(frame: .zero)
-        super.init()
-        tableView.intercellSpacing = NSSize(width: 0, height: 9)
-        tableView.rowSizeStyle = .large
-        tableView.backgroundColor = .clear
-        tableView.headerView = nil
-        tableView.dataSource = self
-        tableView.delegate = self
-        let iconCol = NSTableColumn(
-            identifier: NSUserInterfaceItemIdentifier(
-                rawValue: FrontierTableView.columnIcon))
-        let textCol = NSTableColumn(
-            identifier: NSUserInterfaceItemIdentifier(
-                rawValue: FrontierTableView.columnText))
-        iconCol.width = 20
-        textCol.width = 433
-        tableView.addTableColumn(iconCol)
-        tableView.addTableColumn(textCol)
-        tableView.target = self
-        tableView.action = #selector(onItemClicked)
-    }
-
-    func add(items: [Frontier.Info.News]) {
-        self.items += items
-    }
-
-    @objc private func onItemClicked() {
-        let index = abs(tableView.clickedRow)
-        guard index < items.count else {
-            return
-        }
-        if let url = URL(string: items[abs(tableView.clickedRow)].url) {
-            NSWorkspace.shared.open(url)
-        }
-    }
-}
-
-extension FrontierTableView: NSTableViewDelegate, NSTableViewDataSource {
-    func numberOfRows(in tableView: NSTableView) -> Int {
-        return items.count
-    }
-
-    func tableView(
-        _ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int
-    ) -> NSView? {
-        switch (tableColumn?.identifier)!.rawValue {
-        case FrontierTableView.columnIcon:
-            return NSImageView(image: icon)
-        case FrontierTableView.columnText:
-            return createCell(name: items[row].title)
-        default:
-            fatalError("FrontierTableView identifier not found")
-        }
-    }
-
-    private func createCell(name: String) -> NSView {
-        let text = NSTextField(string: name)
-        text.cell?.usesSingleLineMode = false
-        text.cell?.wraps = true
-        text.cell?.lineBreakMode = .byWordWrapping
-        text.isEditable = false
-        text.isBordered = false
-        text.drawsBackground = false
-        text.preferredMaxLayoutWidth = 433
-        return text
-    }
-
-    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-        return createCell(name: items[row].title).intrinsicContentSize.height
-    }
-
-    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-        return false
-    }
-
-    func tableView(_ tableView: NSTableView, rowViewForRow row: Int)
-        -> NSTableRowView?
-    {
-        let rowView = NSTableRowView()
-        rowView.isEmphasized = false
-        return rowView
     }
 }

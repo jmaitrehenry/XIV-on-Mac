@@ -57,7 +57,9 @@ struct CharacterSlotView: View {
         .padding(10)
         .overlay(
             RoundedRectangle(cornerRadius: 10)
-                .stroke((selected) ? .blue : .gray, lineWidth: 4)
+                .stroke(
+                    selected ? XOMStyle.accent : .secondary.opacity(0.15),
+                    lineWidth: selected ? 2 : 1)
         )
         .contextMenu {
             if let dataURL = characterData.path {
@@ -69,8 +71,16 @@ struct CharacterSlotView: View {
     }
 }
 
-#Preview {
-    let characterData: CharacterDataSlot =
-        Benchmark.findAvailableRetailCharacters().first!
-    return CharacterSlotView(characterData: characterData)
-}
+#if DEBUG
+    #Preview("Character slot") {
+        CharacterSlotView(
+            characterData: PreviewContent.character, selected: true
+        )
+        .padding().frame(width: 340)
+    }
+
+    #Preview("Empty slot") {
+        CharacterSlotView(characterData: CharacterDataSlot(id: 2, dataURL: nil))
+            .padding().frame(width: 340)
+    }
+#endif

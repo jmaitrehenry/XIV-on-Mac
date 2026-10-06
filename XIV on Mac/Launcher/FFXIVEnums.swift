@@ -54,10 +54,18 @@ public enum FFXIVLanguage: UInt8 {
     }
 }
 
-public enum XLError: Error {
+public enum XLError: LocalizedError {
     case loginError(String)
     case startError(String)
     case runtimeError(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .loginError(let message), .startError(let message),
+            .runtimeError(let message):
+            return message
+        }
+    }
 
     var tryMap: Error {
         switch self {

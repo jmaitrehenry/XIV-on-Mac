@@ -19,24 +19,6 @@ enum ScreenCaptureHelper {
     public static let captureFolderPref: String = "ScreenCaptureDirectory"
     public static let videoCodecPref: String = "ScreenCaptureCodec"
 
-    @MainActor public static func chooseFolder() {
-        let openPanel = NSOpenPanel()
-        openPanel.message = NSLocalizedString(
-            "SELECT_CAPTURE_PATH_PANEL_MESSAGE", comment: "")
-        openPanel.showsResizeIndicator = true
-        openPanel.showsHiddenFiles = true
-        openPanel.canChooseDirectories = true
-        openPanel.canChooseFiles = false
-        openPanel.canCreateDirectories = false
-        openPanel.allowsMultipleSelection = false
-        openPanel.begin { response in
-            if response == .OK {
-                UserDefaults.standard.setValue(
-                    openPanel.url!.path, forKey: captureFolderPref)
-            }
-            openPanel.close()
-        }
-    }
 }
 
 class ScreenCapture: @unchecked Sendable {
@@ -49,7 +31,7 @@ class ScreenCapture: @unchecked Sendable {
             }
         }
     }
-    
+
     @MainActor func sendScreenCaptureStatusNotification() {
         ScreenCapture.sendScreenCaptureStatusNotification(
             isRecording: self.isRecording, avWriter: self.avWriter)
@@ -91,70 +73,6 @@ class ScreenCapture: @unchecked Sendable {
                 trigger: trigger
             )
             UNUserNotificationCenter.current().add(request)
-        }
-    }
-
-    @MainActor
-    static func checkCapturePermissions() {
-        Task {
-            // Two permissions we need, only one of which is required.
-            let recordPermission = await hasRecordPermission()
-            var notifiyPermission: Bool = false
-
-            let center = UNUserNotificationCenter.current()
-            let settings = await center.notificationSettings()
-            notifiyPermission = settings.authorizationStatus == .authorized
-
-            let alert: NSAlert = .init()
-            alert.messageText = NSLocalizedString(
-                "SCREEN_CAPTURE_PERMISSION", comment: "")
-            if !notifiyPermission && !recordPermission {
-                alert.informativeText = NSLocalizedString(
-                    "SCREEN_CAPTURE_PERMISSION_HAVE_NONE", comment: "")
-            } else if !notifiyPermission {
-                alert.informativeText = NSLocalizedString(
-                    "SCREEN_CAPTURE_PERMISSION_NO_NOTIFY", comment: "")
-            } else if !recordPermission {
-                alert.informativeText = NSLocalizedString(
-                    "SCREEN_CAPTURE_PERMISSION_NO_RECORD", comment: "")
-            } else {
-                alert.informativeText = NSLocalizedString(
-                    "SCREEN_CAPTURE_PERMISSION_HAVE_ALL", comment: "")
-            }
-            if !recordPermission {
-                alert.alertStyle = .critical
-            } else {
-                alert.alertStyle = .informational
-            }
-            alert.addButton(
-                withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-            alert.addButton(
-                withTitle: NSLocalizedString(
-                    "SCREEN_CAPTURE_PERMISSION_OPEN_PREF_BUTTON", comment: ""))
-            if !recordPermission {
-                alert.icon = NSImage(named: "CfgCheckProbFailed.tiff")
-            } else if !notifiyPermission {
-                alert.icon = NSImage(named: "CfgCheckProblems.tiff")
-            } else {
-                alert.icon = NSImage(named: "CfgCheckGood.tiff")
-            }
-            let result = alert.runModal()
-            if result == .alertSecondButtonReturn {
-                if !recordPermission {
-                    NSWorkspace.shared.open(
-                        URL(
-                            string:
-                                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-                        )!)
-                } else {
-                    // Should/can we just ask for permission again instead? Doesn't seem to be an exposed way to go directory to notification pane
-                    NSWorkspace.shared.open(
-                        URL(
-                            string:
-                                "x-apple.systempreferences:com.apple.preference"
-                        )!)
-                }
-            }
         }
     }
 

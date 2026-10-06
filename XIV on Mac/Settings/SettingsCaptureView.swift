@@ -7,68 +7,118 @@
 
 import KeyboardShortcuts
 import SwiftUI
+import UniformTypeIdentifiers
+import UserNotifications
 
 struct SettingsCaptureView: View {
-
-    @AppStorage(ScreenCaptureHelper.captureFolderPref, store: .standard)
-    var captureFolder: String =
-        (FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
-        as NSURL).path ?? ""
-    @AppStorage(ScreenCaptureHelper.videoCodecPref, store: .standard)
-    var codecType: ScreenCaptureCodec = .h264
+    @AppStorage(ScreenCaptureHelper.captureFolderPref) private
+        var captureFolder =
+        FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]
+        .path
+    @AppStorage(ScreenCaptureHelper.videoCodecPref) private var codecType:
+        ScreenCaptureCodec = .h264
+    @State private var choosingFolder = false
+    @State private var checking = false
+    @State private var permissionMessage: String?
+    @State private var permissionURL: URL?
+    @State private var notice: AppNotice?
 
     var body: some View {
-        VStack {
-            HStack {
-                Text("SETTINGS_CAPTURE_PERMISSIONS_CHECK")
-                    .multilineTextAlignment(.leading)
-                    .lineLimit(nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                Button("SETTINGS_CAPTURE_PERMISSIONS_CHECK_BUTTON") {
-                    ScreenCapture.checkCapturePermissions()
-                }.fixedSize()
-                Spacer()
-            }
-            HStack {
-                Text("CAPTURE_FOLDER_LABEL")
-                Text(captureFolder)
-                    .frame(minWidth: 200)
-                Spacer()
-                Button("CAPTURE_FOLDER_SELECT_BUTTON") {
-                    ScreenCaptureHelper.chooseFolder()
+        VStack(spacing: 18) {
+            SettingsSection(title: "Permissions", symbol: "lock.shield") {
+                Text("SETTINGS_CAPTURE_PERMISSIONS_CHECK").foregroundStyle(
+                    .secondary)
+                HStack {
+                    Button("SETTINGS_CAPTURE_PERMISSIONS_CHECK_BUTTON") {
+                        checkPermissions()
+                    }.disabled(
+                        checking)
+                    if checking { ProgressView().controlSize(.small) }
+                }
+                if let message = permissionMessage {
+                    Text(message).font(.callout)
+                    if let url = permissionURL {
+                        Link(
+                            "SCREEN_CAPTURE_PERMISSION_OPEN_PREF_BUTTON",
+                            destination: url)
+                    }
                 }
             }
-
-            HStack {
+            SettingsSection(title: "Recording", symbol: "record.circle") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("CAPTURE_FOLDER_LABEL")
+                        Text(captureFolder).font(.caption).foregroundStyle(
+                            .secondary
+                        )
+                        .lineLimit(2).truncationMode(.middle).textSelection(
+                            .enabled)
+                    }
+                    Spacer()
+                    Button("CAPTURE_FOLDER_SELECT_BUTTON") {
+                        choosingFolder = true
+                    }
+                }
                 KeyboardShortcuts.Recorder(
                     NSLocalizedString(
                         "SETTINGS_TOGGLE_SCREEN_RECORDING", comment: ""),
                     name: .toggleVideoCapture)
-                Spacer()
-            }
-
-            HStack {
-                Picker(
-                    selection: $codecType, label: Text("SETTINGS_CAPTURE_CODEC")
-                ) {
+                Picker("SETTINGS_CAPTURE_CODEC", selection: $codecType) {
                     Text("SETTINGS_CAPTURE_CODEC_H264").tag(
                         ScreenCaptureCodec.h264)
                     Text("SETTINGS_CAPTURE_CODEC_HEVC").tag(
                         ScreenCaptureCodec.hevc)
-                }.pickerStyle(RadioGroupPickerStyle())
-                Spacer()
+                }
             }
+        }
+        .notice($notice)
+        .fileImporter(
+            isPresented: $choosingFolder, allowedContentTypes: [.folder]
+        ) { result in
+            switch result {
+            case .success(let url): captureFolder = url.path
+            case .failure(let error):
+                notice = AppNotice(
+                    "CAPTURE_FOLDER_LABEL", error.localizedDescription)
+            }
+        }
+    }
 
-            Spacer()
-        }.padding()
+    private func checkPermissions() {
+        checking = true
+        Task {
+            let record = await ScreenCapture.hasRecordPermission()
+            let notifications =
+                await UNUserNotificationCenter.current().notificationSettings()
+                .authorizationStatus
+                == .authorized
+            let key =
+                !record && !notifications
+                ? "SCREEN_CAPTURE_PERMISSION_HAVE_NONE"
+                : !record
+                    ? "SCREEN_CAPTURE_PERMISSION_NO_RECORD"
+                    : !notifications
+                        ? "SCREEN_CAPTURE_PERMISSION_NO_NOTIFY"
+                        : "SCREEN_CAPTURE_PERMISSION_HAVE_ALL"
+            permissionMessage = NSLocalizedString(key, comment: "")
+            permissionURL =
+                record && notifications
+                ? nil
+                : URL(
+                    string: !record
+                        ? "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+                        : "x-apple.systempreferences:com.apple.preference")
+            checking = false
+        }
     }
 }
 
-struct SettingsCaptureView_Previews: PreviewProvider {
-    static var previews: some View {
-        SettingsCaptureView()
+#if DEBUG
+    #Preview("Capture") {
+        ScrollView {
+            SettingsCaptureView().padding(28)
+        }
+        .frame(width: 755, height: 640)
+        .tint(XOMStyle.accent)
     }
-}
+#endif

@@ -8,43 +8,85 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var selectedSettingsTab: SettingsTabItem = .General
-
-    private var generalTabView: SettingsGeneralTabView = .init()
-    private var captureView: SettingsCaptureView = .init()
-    private var graphicsTabView: SettingsGraphicsTabView = .init()
-    private var pluginsTabView: SettingsPluginsTabView = .init()
-    private var advancedTabView: SettingsAdvancedTabView = .init()
+    @State private var selected: SettingsPage = .general
 
     var body: some View {
-        TabView(selection: $selectedSettingsTab) {
-            generalTabView.tabItem { Text("SETTINGS_TAB_GENERAL_TITLE") }.tag(
-                SettingsTabItem.General)
-            captureView.tabItem { Text("SETTINGS_TAB_CAPTURE_TITLE") }.tag(
-                SettingsTabItem.Capture)
-            graphicsTabView.tabItem { Text("SETTINGS_TAB_GRAPHICS_TITLE") }.tag(
-                SettingsTabItem.Graphics)
-            pluginsTabView.tabItem { Text("SETTINGS_TAB_PLUGINS_TITLE") }.tag(
-                SettingsTabItem.Plugins)
-            advancedTabView.tabItem { Text("SETTINGS_TAB_ADVANCED_TITLE") }.tag(
-                SettingsTabItem.Advanced)
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(SettingsPage.allCases) { page in
+                    Button {
+                        selected = page
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: page.symbol).frame(width: 20)
+                            Text(page.title).fontWeight(
+                                selected == page ? .semibold : .regular)
+                            Spacer()
+                        }
+                        .padding(12).contentShape(Rectangle())
+                        .background(
+                            selected == page
+                                ? XOMStyle.accent.opacity(0.14) : .clear,
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
+                        .foregroundStyle(
+                            selected == page ? XOMStyle.accent : .primary)
+                    }.buttonStyle(.plain).accessibilityAddTraits(
+                        selected == page ? .isSelected : [])
+                }
+                Spacer()
+                Text("XIV ON MAC").font(.system(size: 9, weight: .bold))
+                    .tracking(2).foregroundStyle(
+                        .tertiary
+                    ).padding(12)
+            }
+            .padding(18).frame(width: 205).frame(maxHeight: .infinity)
+            .background(.ultraThinMaterial)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Group {
+                        switch selected {
+                        case .general: SettingsGeneralTabView()
+                        case .graphics: SettingsGraphicsTabView()
+                        case .plugins: SettingsPluginsTabView()
+                        case .capture: SettingsCaptureView()
+                        case .advanced: SettingsAdvancedTabView()
+                        }
+                    }
+                }.padding(28)
+            }
         }
-        .padding(.top)
-        .frame(minWidth: 780, minHeight: 590)
-        .background(VisualEffectView())
+        .frame(minWidth: 900, idealWidth: 960, minHeight: 640, idealHeight: 720)
+        .navigationTitle("SETTINGS_WINDOW_TITLE")
+        .modifier(AppWindowBackground()).tint(XOMStyle.accent)
     }
 }
 
-struct SettingsWindow_Previews: PreviewProvider {
-    static var previews: some View {
-        SettingsView()
+#if DEBUG
+    #Preview("Settings") {
+        SettingsView().frame(width: 960, height: 720)
     }
-}
+#endif
 
-private enum SettingsTabItem: Hashable {
-    case General
-    case Capture
-    case Graphics
-    case Plugins
-    case Advanced
+private enum SettingsPage: String, CaseIterable, Identifiable {
+    case general, graphics, plugins, capture, advanced
+    var id: Self { self }
+    var title: LocalizedStringKey {
+        switch self {
+        case .general: "SETTINGS_TAB_GENERAL_TITLE"
+        case .graphics: "SETTINGS_TAB_GRAPHICS_TITLE"
+        case .plugins: "SETTINGS_TAB_PLUGINS_TITLE"
+        case .capture: "SETTINGS_TAB_CAPTURE_TITLE"
+        case .advanced: "SETTINGS_TAB_ADVANCED_TITLE"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .general: "slider.horizontal.3"
+        case .graphics: "display"
+        case .plugins: "puzzlepiece.extension"
+        case .capture: "record.circle"
+        case .advanced: "gearshape.2"
+        }
+    }
 }

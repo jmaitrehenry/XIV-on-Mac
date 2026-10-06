@@ -40,14 +40,25 @@ extension HTTPClient {
             body: body, option: option)
     }
 
-    private class Progress {
-        internal init() {
-            self.total = 0
-            self.now = 0
+    private final class Progress {
+        let callback: (Int64, Int64, Int64) -> Void
+        private var lastTime = ProcessInfo.processInfo.systemUptime
+        private var lastBytes: Double = 0
+
+        init(callback: @escaping (Int64, Int64, Int64) -> Void) {
+            self.callback = callback
         }
 
-        var total: Double
-        var now: Double
+        func update(total: Double, now: Double) {
+            let time = ProcessInfo.processInfo.systemUptime
+            let elapsed = time - lastTime
+            guard elapsed >= 0.25, now > 0 else { return }
+            callback(
+                Int64(total), Int64(now),
+                Int64(max(0, now - lastBytes) / elapsed))
+            lastTime = time
+            lastBytes = now
+        }
     }
 
     static func fetchFile(
@@ -73,6 +84,7 @@ extension HTTPClient {
         }
         defer {
             fclose(fileHandle)
+            try? FileManager.default.removeItem(at: tempURL)
         }
         Util.make(dir: tempURL.deletingLastPathComponent())
         Util.make(dir: destURL.deletingLastPathComponent())
@@ -117,39 +129,19 @@ extension HTTPClient {
             }
             let progress = Unmanaged<Progress>.fromOpaque(progPtr)
                 .takeUnretainedValue()
-            progress.total = dltotal
-            progress.now = dlnow
+            progress.update(total: dltotal, now: dlnow)
             return 0
         }
-        let progress = Progress()
-        var lastDownloadedBytes: Double = 0
-        var timer: Timer?
-        defer {
-            timer?.invalidate()
-        }
-        if let callback = progressCallback {
+        let progress = progressCallback.map { Progress(callback: $0) }
+        if let progress {
             try curl.set(option: CURLOPT_NOPROGRESS, false)
             try curl.set(option: CURLOPT_PROGRESSFUNCTION, updateProgress)
             try curl.set(
                 option: CURLOPT_XFERINFODATA, Unmanaged.passUnretained(progress)
             )
-            DispatchQueue.main.async {
-                let updateInterval = 0.5
-                timer = Timer.scheduledTimer(
-                    withTimeInterval: updateInterval, repeats: true
-                ) { _ in
-                    guard progress.now > 0 else {
-                        return
-                    }
-                    let speed =
-                        (progress.now - lastDownloadedBytes) / updateInterval
-                    lastDownloadedBytes = progress.now
-                    callback(
-                        Int64(progress.total), Int64(progress.now), Int64(speed)
-                    )
-                }
-            }
         }
+        // cURL does not retain the callback context.
+        defer { withExtendedLifetime(progress) {} }
 
         try curl.perform()
         fflush(fileHandle)

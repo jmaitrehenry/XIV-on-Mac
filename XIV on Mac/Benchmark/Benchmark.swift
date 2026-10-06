@@ -224,38 +224,6 @@ enum Benchmark {
         return .unknown
     }
 
-    public static func chooseFolder() {
-        let openPanel = NSOpenPanel()
-        openPanel.message = NSLocalizedString(
-            "SELECT_BENCHMARK_PATH_PANEL_MESSAGE", comment: "")
-        openPanel.showsResizeIndicator = true
-        openPanel.showsHiddenFiles = true
-        openPanel.canChooseDirectories = true
-        openPanel.canChooseFiles = false
-        openPanel.canCreateDirectories = false
-        openPanel.allowsMultipleSelection = false
-        openPanel.begin { response in
-            if response == .OK {
-                if check(folder: openPanel.url) {
-                    openPanel.close()
-                    UserDefaults.standard.setValue(
-                        openPanel.url!.path, forKey: benchmarkFolderPref)
-                    return
-                }
-                let alert = NSAlert()
-                alert.messageText = NSLocalizedString(
-                    "BENCHMARK_TITLE", comment: "")
-                alert.informativeText = NSLocalizedString(
-                    "SELECT_BENCHMARK_PATH_ERROR_INFORMATIVE", comment: "")
-                alert.alertStyle = .critical
-                alert.addButton(
-                    withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-                alert.runModal()
-                openPanel.close()
-            }
-        }
-    }
-
     private static func setupDefaultOptions(iniFilePath: URL) -> INIFile {
         var iniFile: INIFile = INIFile()
 
@@ -298,7 +266,7 @@ enum Benchmark {
 
     public static func launchFrom(
         folder: URL, options: BenchmarkOptions, setDefaults: Bool
-    ) async {
+    ) async throws -> String? {
         var shouldSetDefaults: Bool = setDefaults
         Log.information("Benchmark started on folder: \(folder.path)")
         let benchmarkExe = folder.appendingPathComponent("game/ffxiv_dx11.exe")
@@ -342,8 +310,9 @@ enum Benchmark {
                 screenMode = String(
                     FFXIVCFGDisplay_ScreenMode.Borderless.rawValue)
                 // It's not actually important to set these in Borderless, but if you don't it displays lies.
-                if let mainScreen = NSScreen.main {
-                    let mainScreenFrame = mainScreen.frame
+                if let mainScreenFrame = await MainActor.run(body: {
+                    NSScreen.main?.frame
+                }) {
                     let retina: Bool = Wine.retina
                     screenWidth = String(
                         Int(mainScreenFrame.width) * (retina ? 2 : 1))
@@ -369,16 +338,9 @@ enum Benchmark {
             }
         }
 
-        // Write out our modified INI file
-        do {
-            let modifiedINIContents = try INIFileEncoder.encode(iniFile)
-            try modifiedINIContents.write(
-                to: iniFilePath, atomically: true, encoding: .utf8)
-        } catch let writeError as NSError {
-            Log.error(
-                "Benchmark: Could not save new settings: \(writeError.localizedDescription)"
-            )
-        }
+        let modifiedINIContents = try INIFileEncoder.encode(iniFile)
+        try modifiedINIContents.write(
+            to: iniFilePath, atomically: true, encoding: .utf8)
         var finalArgs = args
         finalArgs.append("SYS.ScreenMode=\(screenMode)")
         finalArgs.append("SYS.ScreenWidth=\(screenWidth)")
@@ -390,43 +352,23 @@ enum Benchmark {
         Wine.launch(
             command: "\"\(benchmarkExe)\" \(finalArgs.joined(separator: " "))",
             blocking: true)
-        guard
-            let iniContents = try? String(
-                contentsOf: folder.appendingPathComponent(
-                    "ffxivbenchmarklauncher.ini"), encoding: .utf8)
-        else {
-            Log.error("Could not read ffxivbenchmarklauncher.ini")
-            return
-        }
+        guard options.mode == .benchmark else { return nil }
+        let iniContents = try String(contentsOf: iniFilePath, encoding: .utf8)
         guard
             let score = iniContents.range(
-                of: #"(?<=SCORE=)\d+"#, options: .regularExpression)
-        else {
-            Log.error("Could not parse parse benchmark score")
-            return
-        }
-        guard
+                of: #"(?<=SCORE=)\d+"#, options: .regularExpression),
             let fps = iniContents.range(
-                of: #"(?<=SCORE_FPSAVERAGE=)\d+"#, options: .regularExpression)
+                of: #"(?<=SCORE_FPSAVERAGE=)[\d.]+"#,
+                options: .regularExpression)
         else {
-            Log.error("Could not parse parse benchmark fps")
-            return
+            throw CocoaError(.fileReadCorruptFile)
         }
-        await MainActor.run {
-            let alert = NSAlert()
-            alert.messageText = NSLocalizedString(
-                "BENCHMARK_TITLE", comment: "")
-            alert.informativeText = String(
-                format: NSLocalizedString("BENCHMARK_RESULT", comment: ""),
-                String(iniContents[score]), String(iniContents[fps]))
-            alert.alertStyle = .informational
-            alert.addButton(
-                withTitle: NSLocalizedString("BUTTON_OK", comment: ""))
-            alert.runModal()
-        }
+        return String(
+            format: NSLocalizedString("BENCHMARK_RESULT", comment: ""),
+            String(iniContents[score]), String(iniContents[fps]))
     }
 
-    private static func check(folder: URL?) -> Bool {
+    static func check(folder: URL?) -> Bool {
         let fm = FileManager.default
         guard let folder = folder else {
             return false

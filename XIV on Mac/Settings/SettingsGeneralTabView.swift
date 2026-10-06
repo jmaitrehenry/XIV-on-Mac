@@ -5,180 +5,109 @@
 //  Created by Chris Backas on 1/14/23.
 //
 
-import SeeURL  // HTTPClient/Download speed limiter setting
+import SeeURL
 import SwiftUI
 
 struct SettingsGeneralTabView: View {
     @StateObject private var viewModel = ViewModel()
-
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack {
-                VStack {
-                    HStack {
-                        Text("SETTINGS_GENERAL_TITLE_LICENSE")
-                            .font(.headline)
-
-                        Spacer()
-                    }
-
-                    Text("SETTINGS_GENERAL_LANGUAGE_AND_LICENSE_BLURB")
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.callout)
-
-                    HStack {
-                        Picker(
-                            selection: $viewModel.language,
-                            label: Text("SETTINGS_LANGUAGE_PICKER")
-                        ) {
-                            Text("SETTINGS_LANGUAGE_JAPANESE").tag(
-                                FFXIVLanguage.japanese)
-                            Text("SETTINGS_LANGUAGE_ENGLISH").tag(
-                                FFXIVLanguage.english)
-                            Text("SETTINGS_LANGUAGE_FRENCH").tag(
-                                FFXIVLanguage.french)
-                            Text("SETTINGS_LANGUAGE_GERMAN").tag(
-                                FFXIVLanguage.german)
-                        }
-                        .padding(.bottom)
-                        .fixedSize(horizontal: true, vertical: false)
-
-                        Picker(
-                            selection: $viewModel.platform,
-                            label: Text("SETTINGS_PLATFORM_PICKER")
-                        ) {
-                            Text("SETTINGS_PLATFORM_MAC").tag(FFXIVPlatform.mac)
-                            Text("SETTINGS_PLATFORM_WINDOWS").tag(
-                                FFXIVPlatform.windows)
-                            Text("SETTINGS_PLATFORM_STEAM").tag(
-                                FFXIVPlatform.steam)
-                        }
-                        .padding(.bottom)
-                        .fixedSize(horizontal: true, vertical: false)
-
-                        Spacer()
-                    }
-
-                    HStack {
-                        Toggle(isOn: $viewModel.freeTrial) {
-                            Text("SETTINGS_FREE_TRIAL")
-                        }
-                        .fixedSize(horizontal: true, vertical: false)
-
-                        Spacer()
-                    }
-
-                    Text("SETTINGS_GENERAL_FREE_TRIAL_BLURB")
-                        .multilineTextAlignment(.leading)
-                        .lineLimit(nil)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.callout)
+        VStack(spacing: 18) {
+            SettingsSection(
+                title: "SETTINGS_GENERAL_TITLE_LICENSE",
+                symbol: "person.text.rectangle"
+            ) {
+                Text("SETTINGS_GENERAL_LANGUAGE_AND_LICENSE_BLURB")
+                    .foregroundStyle(.secondary)
+                Picker(
+                    "SETTINGS_LANGUAGE_PICKER", selection: $viewModel.language
+                ) {
+                    Text("SETTINGS_LANGUAGE_JAPANESE").tag(
+                        FFXIVLanguage.japanese)
+                    Text("SETTINGS_LANGUAGE_ENGLISH").tag(FFXIVLanguage.english)
+                    Text("SETTINGS_LANGUAGE_FRENCH").tag(FFXIVLanguage.french)
+                    Text("SETTINGS_LANGUAGE_GERMAN").tag(FFXIVLanguage.german)
                 }
-                .padding([.leading, .trailing, .top])
-
-                VStack {
-                    HStack {
-                        Text("SETTINGS_GENERAL_TITLE_NETWORK")
-                            .font(.headline)
-
-                        Spacer()
-                    }
-
-                    HStack {
-                        Toggle(isOn: $viewModel.limitDownloadEnabled) {
-                            Text("SETTINGS_DOWNLOAD_LIMIT")
-                        }
-
-                        TextField(
-                            "SETTINGS_DOWNLOAD_LIMIT_PLACEHOLDER",
-                            text: $viewModel.limitDownloadSpeed
-                        )
-                        .fixedSize(horizontal: true, vertical: false)
-                        .disabled(!viewModel.limitDownloadEnabled)
-
-                        Text("SETTINGS_DOWNLOAD_LIMIT_UNITS")
-                        Spacer()
-                    }
+                Picker(
+                    "SETTINGS_PLATFORM_PICKER", selection: $viewModel.platform
+                ) {
+                    Text("SETTINGS_PLATFORM_MAC").tag(FFXIVPlatform.mac)
+                    Text("SETTINGS_PLATFORM_WINDOWS").tag(FFXIVPlatform.windows)
+                    Text("SETTINGS_PLATFORM_STEAM").tag(FFXIVPlatform.steam)
                 }
-                .padding([.leading, .trailing, .top])
-
-                HStack {
-                    VStack {
-                        HStack {
-                            Text("SETTINGS_GENERAL_TITLE_INPUT")
-                                .font(.headline)
-
-                            Spacer()
-                        }
-
-                        HStack {
-                            Picker(
-                                "SETTINGS_GENERAL_INPUT_LEFT_OPTION",
-                                selection: $viewModel.leftOptionIsAlt
-                            ) {
-                                Text(
-                                    "SETTINGS_GENERAL_INPUT_BUTTON_WINDOWS_ALT"
-                                ).tag(true)
-                                Text(
-                                    "SETTINGS_GENERAL_INPUT_BUTTON_MACOS_OPTION"
-                                ).tag(false)
-                            }
-
-                            Picker(
-                                "SETTINGS_GENERAL_INPUT_RIGHT_OPTION",
-                                selection: $viewModel.rightOptionIsAlt
-                            ) {
-                                Text(
-                                    "SETTINGS_GENERAL_INPUT_BUTTON_WINDOWS_ALT"
-                                ).tag(true)
-                                Text(
-                                    "SETTINGS_GENERAL_INPUT_BUTTON_MACOS_OPTION"
-                                ).tag(false)
-                            }
-                        }
-
-                        HStack {
-                            Picker(
-                                "SETTINGS_GENERAL_INPUT_LEFT_COMMAND",
-                                selection: $viewModel.leftCommandIsCtrl
-                            ) {
-                                Text("SETTINGS_GENERAL_INPUT_BUTTON_CTRL").tag(
-                                    true)
-                                Text("SETTINGS_GENERAL_INPUT_BUTTON_ALT").tag(
-                                    false)
-                            }
-
-                            Picker(
-                                "SETTINGS_GENERAL_INPUT_RIGHT_COMMAND",
-                                selection: $viewModel.rightCommandIsCtrl
-                            ) {
-                                Text("SETTINGS_GENERAL_INPUT_BUTTON_CTRL").tag(
-                                    true)
-                                Text("SETTINGS_GENERAL_INPUT_BUTTON_ALT").tag(
-                                    false)
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 140)
-                }
-                .padding([.leading, .trailing, .top])
-
-                Spacer()
+                Toggle("SETTINGS_FREE_TRIAL", isOn: $viewModel.freeTrial)
+                Text("SETTINGS_GENERAL_FREE_TRIAL_BLURB").font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Image(nsImage: NSImage(named: "PrefsGeneral") ?? NSImage())
-                .padding()
-        }
+            SettingsSection(
+                title: "SETTINGS_GENERAL_TITLE_NETWORK", symbol: "network"
+            ) {
+                HStack {
+                    Toggle(
+                        "SETTINGS_DOWNLOAD_LIMIT",
+                        isOn: $viewModel.limitDownloadEnabled)
+                    Spacer()
+                    TextField(
+                        "SETTINGS_DOWNLOAD_LIMIT_PLACEHOLDER",
+                        text: $viewModel.limitDownloadSpeed
+                    )
+                    .frame(width: 75).disabled(!viewModel.limitDownloadEnabled)
+                    Text("SETTINGS_DOWNLOAD_LIMIT_UNITS").foregroundStyle(
+                        .secondary)
+                }
+            }
+            SettingsSection(
+                title: "SETTINGS_GENERAL_TITLE_INPUT", symbol: "keyboard"
+            ) {
+                HStack {
+                    Picker(
+                        "SETTINGS_GENERAL_INPUT_LEFT_OPTION",
+                        selection: $viewModel.leftOptionIsAlt
+                    ) {
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_WINDOWS_ALT").tag(
+                            true)
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_MACOS_OPTION").tag(
+                            false)
+                    }
+                    Picker(
+                        "SETTINGS_GENERAL_INPUT_RIGHT_OPTION",
+                        selection: $viewModel.rightOptionIsAlt
+                    ) {
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_WINDOWS_ALT").tag(
+                            true)
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_MACOS_OPTION").tag(
+                            false)
+                    }
+                }
+                HStack {
+                    Picker(
+                        "SETTINGS_GENERAL_INPUT_LEFT_COMMAND",
+                        selection: $viewModel.leftCommandIsCtrl
+                    ) {
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_CTRL").tag(true)
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_ALT").tag(false)
+                    }
+                    Picker(
+                        "SETTINGS_GENERAL_INPUT_RIGHT_COMMAND",
+                        selection: $viewModel.rightCommandIsCtrl
+                    ) {
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_CTRL").tag(true)
+                        Text("SETTINGS_GENERAL_INPUT_BUTTON_ALT").tag(false)
+                    }
+                }
+            }
+        }.textFieldStyle(.roundedBorder)
     }
 }
 
-struct SettingsGeneralTabView_Previews: PreviewProvider {
-    static var previews: some View {
-        SettingsGeneralTabView()
+#if DEBUG
+    #Preview("General") {
+        ScrollView {
+            SettingsGeneralTabView().padding(28)
+        }
+        .frame(width: 755, height: 640)
+        .tint(XOMStyle.accent)
     }
-}
+#endif
 
 extension SettingsGeneralTabView {
     @MainActor class ViewModel: ObservableObject {
